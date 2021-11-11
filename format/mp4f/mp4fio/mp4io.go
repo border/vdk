@@ -1,8 +1,8 @@
 package mp4fio
 
 import (
-	"github.com/deepch/vdk/format/mp4/mp4io"
-	"github.com/deepch/vdk/utils/bits/pio"
+	"github.com/border/vdk/format/mp4/mp4io"
+	"github.com/border/vdk/utils/bits/pio"
 )
 
 type ElemStreamDesc struct {
