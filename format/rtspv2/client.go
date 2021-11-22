@@ -267,7 +267,7 @@ func (client *RTSPClient) startStream() {
 			return
 		}
 		if int(time.Now().Sub(timer).Seconds()) > client.keepalive {
-			err := client.request(GET_PARAMETER, map[string]string{"Require": "implicit-play"}, client.control, false, true)
+			err := client.request(OPTIONS, map[string]string{"Require": "implicit-play"}, client.control, false, true)
 			if err != nil {
 				client.Println("RTSP Client RTP keep-alive", err)
 				return
@@ -905,7 +905,7 @@ func binSize(val int) []byte {
 }
 
 func getKeepalive(timeout int) int {
-	keepalive := int(float64(timeout) * 0.45)
+	keepalive := int(float64(timeout) * 0.7)
 	if keepalive == 0 {
 		keepalive = 1
 	}
