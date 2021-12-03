@@ -25,6 +25,7 @@ import (
 	"github.com/border/vdk/codec/h264parser"
 	"github.com/border/vdk/codec/h265parser"
 	"github.com/border/vdk/format/rtsp/sdp"
+	"github.com/pion/rtcp"
 )
 
 const (
@@ -88,9 +89,13 @@ type RTSPClient struct {
 	PreAudioTS          int64
 	PreVideoTS          int64
 	PreSequenceNumber   int
+	SequenceError       int64
+	PrePayloadType      int
 	FPS                 int
 	WaitCodec           bool
 	keepalive           int
+	NTPBaseTime         uint64
+	RTPTime             uint32
 }
 
 type RTSPClientOptions struct {
@@ -260,6 +265,8 @@ func (client *RTSPClient) startStream() {
 	oneb := make([]byte, 1)
 	header := make([]byte, 4)
 	var fixed bool
+	var demuxerErrorCount int64
+	var demuxerOkCount int64
 	for {
 		err := client.conn.SetDeadline(time.Now().Add(client.options.ReadWriteTimeout))
 		if err != nil {
@@ -310,7 +317,11 @@ func (client *RTSPClient) startStream() {
 			}
 			pkt, got := client.RTPDemuxer(&content)
 			if !got {
+				demuxerErrorCount += 1
+				// log.Printf("Do RTPDemuxer ErrorCount %d, ok: demuxerOkCount: %d\n", demuxerErrorCount, demuxerOkCount)
 				continue
+			} else {
+				demuxerOkCount += 1
 			}
 			for _, i2 := range pkt {
 				if len(client.OutgoingPacketQueue) > 2000 {
@@ -538,15 +549,54 @@ func stringInBetween(str string, start string, end string) (result string) {
 
 func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 	content := *payloadRAW
+	channel := content[1]
 	firstByte := content[4]
+	// verson := (firstByte >> 6) & 0x3
 	padding := (firstByte>>5)&1 == 1
 	extension := (firstByte>>4)&1 == 1
+
+	m := content[5]
+
+	market := (m>>7)&0x1 == 1
+	payloadType := int(m & 0x7F)
 	CSRCCnt := int(firstByte & 0x0f)
 	SequenceNumber := int(binary.BigEndian.Uint16(content[6:8]))
 	timestamp := int64(binary.BigEndian.Uint32(content[8:12]))
 	offset := RTPHeaderSize
 
 	end := len(content)
+
+	if channel == 1 {
+		// RTCP
+		pkgType := content[5]
+
+		// log.Printf("rtcp.SenderReport Channel SequenceNumber: %d, pkgType: %d, offset: %d, end: %d\n", SequenceNumber, pkgType, 4, end)
+		if pkgType == 200 {
+			// RTCP Sender Report
+			var sp rtcp.SenderReport
+			err := sp.Unmarshal(content[4:end])
+			if err != nil {
+				log.Printf("rtcp.SenderReport error: %v\n", err)
+			}
+			seconds := (((sp.NTPTime >> 32) & 0xffffffff) - 2208988800)
+			fraction := (sp.NTPTime & 0xffffffff)
+			useconds := (fraction / 0xffffffff)
+
+			client.NTPBaseTime = seconds + useconds
+			client.RTPTime = sp.RTPTime
+
+			// log.Printf("rtcp.SenderReport RTCP SRInfo: %s, baseTime: %d\n", sp.String(), client.NTPBaseTime)
+		}
+	}
+
+	if payloadType != 96 {
+		// H264 = 96
+		// log.Printf("NOT H264 session: %s, contentLen: %d, m: %X, verson: %d, market: %v, payloadType: %X, SequenceNumber: %d, time: %d", client.session, end, m, verson, market, payloadType, SequenceNumber, timestamp)
+		return nil, false
+	}
+
+	// log.Printf("H264 session: %s, contentLen: %d, m: %X, verson: %d, market: %v, payloadType: %X, SequenceNumber: %d, time: %d, client.videoID: %d, client.audioID: %d\n", client.session, end, m, verson, market, payloadType, SequenceNumber, timestamp, client.videoID, client.audioID)
+
 	if end-offset >= 4*CSRCCnt {
 		offset += 4 * CSRCCnt
 	}
@@ -567,15 +617,20 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 		}
 	}
 	offset += 4
+
 	switch int(content[1]) {
+	// * channel 用来区分音视频等多路流媒体的通道，其中偶数通道为流媒体内容，奇数通道为RTCP
 	case client.videoID:
 		if client.PreVideoTS == 0 {
 			client.PreVideoTS = timestamp
 		}
 		if client.PreSequenceNumber != 0 && SequenceNumber-client.PreSequenceNumber != 1 {
 			client.Println("drop packet", SequenceNumber-1)
+			client.SequenceError += 1
+			log.Printf("market: %v, SequenceNumber: %d, PreSequenceNumber: %d, payloadType: %d, PrePayloadType: %d, client.SequenceError: %d\n", market, SequenceNumber, client.PreSequenceNumber, payloadType, client.PrePayloadType, client.SequenceError)
 		}
 		client.PreSequenceNumber = SequenceNumber
+		client.PrePayloadType = payloadType
 		if client.BufferRtpPacket.Len() > 4048576 {
 			client.Println("Big Buffer Flush")
 			client.BufferRtpPacket.Truncate(0)
@@ -583,6 +638,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 		}
 		nalRaw, _ := h264parser.SplitNALUs(content[offset:end])
 		if len(nalRaw) == 0 || len(nalRaw[0]) == 0 {
+			log.Printf("SplitNALUs Error, market: %v, SequenceNumber: %d, payloadType: %d, len(nalRaw): %d\n", market, SequenceNumber, payloadType, len(nalRaw))
 			return nil, false
 		}
 		var retmap []*av.Packet
@@ -635,6 +691,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 
 			} else if client.videoCodec == av.H264 {
 				naluType := nal[0] & 0x1f
+				// log.Printf("Session: %s, SequenceNumber: %d, naluType: %d, nal[0]: %d, offset: %d, end: %d\n", client.session, SequenceNumber, naluType, nal[0], offset, end)
 				switch {
 				case naluType >= 1 && naluType <= 5:
 					retmap = append(retmap, &av.Packet{
@@ -656,13 +713,16 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 					fuHeader := content[offset+1]
 					isStart := fuHeader&0x80 != 0
 					isEnd := fuHeader&0x40 != 0
+					// _naltype := fuHeader & 0x1F
 					if isStart {
 						client.fuStarted = true
 						client.BufferRtpPacket.Truncate(0)
 						client.BufferRtpPacket.Reset()
 						client.BufferRtpPacket.Write([]byte{fuIndicator&0xe0 | fuHeader&0x1f})
 					}
+					// log.Printf("SequenceNumber: %d, isStart: %v, isEnd: %v, _naltype: %X, client.fuStarted: %v, BufferRtpPacketLen: %d\n", SequenceNumber, isStart, isEnd, _naltype, client.fuStarted, client.BufferRtpPacket.Len())
 					if client.fuStarted {
+						// 另外，有的hk摄像头回调然后解读出来的原始h.264码流，有的一包里只有分界符数据(nal_unit_type=9)或补充增强信息单元(nal_unit_type=6)，如果直接送入解码器，有可能会出现问题，这里的处理方式要么丢弃这两个部分，要么和之后的数据合起来，再送入解码器里)
 						client.BufferRtpPacket.Write(content[offset+2 : end])
 						if isEnd {
 							client.fuStarted = false
@@ -670,17 +730,23 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 							if naluTypef == 7 || naluTypef == 9 {
 								bufered, _ := h264parser.SplitNALUs(append([]byte{0, 0, 0, 1}, client.BufferRtpPacket.Bytes()...))
 								for _, v := range bufered {
+									// NAL Header Type
 									naluTypefs := v[0] & 0x1f
 									switch {
 									case naluTypefs == 5:
-										client.BufferRtpPacket.Reset()
-										client.BufferRtpPacket.Write(v)
+										// type = 5 关键帧 I Frame: 0x65  header & 0x1F = 5
+										// client.BufferRtpPacket.Reset()
+										// client.BufferRtpPacket.Write(v)
 										naluTypef = 5
 									case naluTypefs == 7:
+										// SPS: 0x67 header & 0x1F = 7 序列的参数集(SPS)：包括了一个图像序列的所有信息，
 										client.CodecUpdateSPS(v)
 									case naluTypefs == 8:
+										// PPS:  0x68    header & 0x1F = 8  图像的参数集(PPS)：包括了一个图像所有片的信息
 										client.CodecUpdatePPS(v)
 									}
+									// SEI:  0x66    header & 0x1F = 6
+									// P Frame: 0x41   header & 0x1F = 1
 								}
 							}
 							retmap = append(retmap, &av.Packet{
@@ -694,13 +760,15 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						}
 					}
 				default:
-					//client.Println("Unsupported NAL Type", naluType)
+					client.Println("Unsupported NAL Type", naluType)
 				}
 			}
 		}
 		if len(retmap) > 0 {
 			client.PreVideoTS = timestamp
 			return retmap, true
+		} else {
+			// log.Printf("len(retmap) <= 0 Session: %s, SequenceNumber: %d, client.videoID: %d, client.videoCodec: %s\n", client.session, SequenceNumber, client.videoID, client.videoCodec.String())
 		}
 	case client.audioID:
 		if client.PreAudioTS == 0 {
@@ -775,13 +843,18 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 		if len(retmap) > 0 {
 			client.PreAudioTS = timestamp
 			return retmap, true
+		} else {
+			log.Printf("len(retmap) <= 0 Session: %s, client.audioID: %d, client.videoCodec: %s\n", client.session, client.audioID, client.videoCodec.String())
 		}
 	default:
 		//client.Println("Unsuported Intervaled data packet", int(content[1]), content[offset:end])
+		log.Println("Unsuported Intervaled data packet", int(content[1]), content[offset:end])
 	}
+	// log.Printf("return Error, market: %v, SequenceNumber: %d, payloadType: %d\n", market, SequenceNumber, payloadType)
 	return nil, false
 }
 
+// CodecUpdateSPS 序列的参数集(SPS)：包括了一个图像序列的所有信息
 func (client *RTSPClient) CodecUpdateSPS(val []byte) {
 	if client.videoCodec != av.H264 && client.videoCodec != av.H265 {
 		return
@@ -822,6 +895,7 @@ func (client *RTSPClient) CodecUpdateSPS(val []byte) {
 	client.Signals <- SignalCodecUpdate
 }
 
+// CodecUpdatePPS 图像的参数集(PPS)：包括了一个图像所有片的信息
 func (client *RTSPClient) CodecUpdatePPS(val []byte) {
 	if client.videoCodec != av.H264 && client.videoCodec != av.H265 {
 		return
