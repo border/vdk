@@ -25,7 +25,6 @@ import (
 	"github.com/border/vdk/codec/h264parser"
 	"github.com/border/vdk/codec/h265parser"
 	"github.com/border/vdk/format/rtsp/sdp"
-	"github.com/pion/rtcp"
 )
 
 const (
@@ -549,7 +548,7 @@ func stringInBetween(str string, start string, end string) (result string) {
 
 func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 	content := *payloadRAW
-	channel := content[1]
+	// channel := content[1]
 	firstByte := content[4]
 	// verson := (firstByte >> 6) & 0x3
 	padding := (firstByte>>5)&1 == 1
@@ -566,28 +565,29 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 
 	end := len(content)
 
-	if channel == 1 {
-		// RTCP
-		pkgType := content[5]
+	/*
+		if channel == 1 {
+			// RTCP
+			pkgType := content[5]
+			// log.Printf("rtcp.SenderReport Channel SequenceNumber: %d, pkgType: %d, offset: %d, end: %d\n", SequenceNumber, pkgType, 4, end)
+			if pkgType == 200 {
+				// RTCP Sender Report
+				var sp rtcp.SenderReport
+				err := sp.Unmarshal(content[4:end])
+				if err != nil {
+					log.Printf("rtcp.SenderReport error: %v\n", err)
+				}
+				seconds := (((sp.NTPTime >> 32) & 0xffffffff) - 2208988800)
+				fraction := (sp.NTPTime & 0xffffffff)
+				useconds := (fraction / 0xffffffff)
 
-		// log.Printf("rtcp.SenderReport Channel SequenceNumber: %d, pkgType: %d, offset: %d, end: %d\n", SequenceNumber, pkgType, 4, end)
-		if pkgType == 200 {
-			// RTCP Sender Report
-			var sp rtcp.SenderReport
-			err := sp.Unmarshal(content[4:end])
-			if err != nil {
-				log.Printf("rtcp.SenderReport error: %v\n", err)
+				client.NTPBaseTime = seconds + useconds
+				client.RTPTime = sp.RTPTime
+
+				// log.Printf("rtcp.SenderReport RTCP SRInfo: %s, baseTime: %d\n", sp.String(), client.NTPBaseTime)
 			}
-			seconds := (((sp.NTPTime >> 32) & 0xffffffff) - 2208988800)
-			fraction := (sp.NTPTime & 0xffffffff)
-			useconds := (fraction / 0xffffffff)
-
-			client.NTPBaseTime = seconds + useconds
-			client.RTPTime = sp.RTPTime
-
-			// log.Printf("rtcp.SenderReport RTCP SRInfo: %s, baseTime: %d\n", sp.String(), client.NTPBaseTime)
 		}
-	}
+	*/
 
 	if payloadType != 96 {
 		// H264 = 96
@@ -624,7 +624,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 		if client.PreVideoTS == 0 {
 			client.PreVideoTS = timestamp
 		}
-		if client.PreSequenceNumber != 0 && SequenceNumber-client.PreSequenceNumber != 1 {
+		if (client.PreSequenceNumber != 0 && SequenceNumber != 65535) && SequenceNumber-client.PreSequenceNumber != 1 {
 			client.Println("drop packet", SequenceNumber-1)
 			client.SequenceError += 1
 			log.Printf("market: %v, SequenceNumber: %d, PreSequenceNumber: %d, payloadType: %d, PrePayloadType: %d, client.SequenceError: %d\n", market, SequenceNumber, client.PreSequenceNumber, payloadType, client.PrePayloadType, client.SequenceError)
@@ -727,7 +727,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						if isEnd {
 							client.fuStarted = false
 							naluTypef := client.BufferRtpPacket.Bytes()[0] & 0x1f
-							if naluTypef == 7 || naluTypef == 9 {
+							if naluTypef == 7 || naluTypef == 8 || naluTypef == 9 {
 								bufered, _ := h264parser.SplitNALUs(append([]byte{0, 0, 0, 1}, client.BufferRtpPacket.Bytes()...))
 								for _, v := range bufered {
 									// NAL Header Type
@@ -735,8 +735,8 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 									switch {
 									case naluTypefs == 5:
 										// type = 5 关键帧 I Frame: 0x65  header & 0x1F = 5
-										// client.BufferRtpPacket.Reset()
-										// client.BufferRtpPacket.Write(v)
+										client.BufferRtpPacket.Reset()
+										client.BufferRtpPacket.Write(v)
 										naluTypef = 5
 									case naluTypefs == 7:
 										// SPS: 0x67 header & 0x1F = 7 序列的参数集(SPS)：包括了一个图像序列的所有信息，

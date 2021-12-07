@@ -24,13 +24,15 @@ var (
 )
 
 type Muxer struct {
-	streams   map[int8]*Stream
-	status    webrtc.ICEConnectionState
-	stop      bool
-	pc        *webrtc.PeerConnection
-	ClientACK *time.Timer
-	StreamACK *time.Timer
-	Options   Options
+	streams    map[int8]*Stream
+	status     webrtc.ICEConnectionState
+	stop       bool
+	pc         *webrtc.PeerConnection
+	ClientACK  *time.Timer
+	StreamACK  *time.Timer
+	Options    Options
+	videoTrack *webrtc.TrackLocalStaticSample
+	audioTrack *webrtc.TrackLocalStaticSample
 }
 type Stream struct {
 	codec av.CodecData
@@ -124,6 +126,7 @@ func (element *Muxer) WriteHeader(streams []av.CodecData, sdp64 string) (string,
 				if err != nil {
 					return "", err
 				}
+				element.videoTrack = track
 				if _, err = peerConnection.AddTrack(track); err != nil {
 					return "", err
 				}
@@ -247,6 +250,30 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 		WritePacketSuccess = true
 		return nil
 	}
+}
+
+func (element *Muxer) WriteRtpPacket(sample *media.Sample) (err error) {
+	var WritePacketSuccess bool
+	defer func() {
+		if !WritePacketSuccess {
+			element.Close()
+		}
+	}()
+	if sample == nil {
+		return nil
+	}
+	if element.stop {
+		return ErrorClientOffline
+	}
+	if element.status == webrtc.ICEConnectionStateChecking {
+		WritePacketSuccess = true
+		return nil
+	}
+	if element.status != webrtc.ICEConnectionStateConnected {
+		return nil
+	}
+	element.videoTrack.WriteSample(*sample)
+	return nil
 }
 
 func (element *Muxer) Close() error {
