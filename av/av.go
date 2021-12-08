@@ -253,6 +253,7 @@ type Packet struct {
 	CompositionTime time.Duration // packet presentation time minus decode time for H264 B-Frame
 	Time            time.Duration // packet decode time
 	Duration        time.Duration //packet duration
+	TimeStamp       time.Time     // packet received timestamp
 	Data            []byte        // packet data
 }
 

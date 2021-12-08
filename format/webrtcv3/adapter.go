@@ -234,7 +234,8 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 				pkt.Data = pkt.Data[4:]
 			}
 			preTime := element.VideoStats.Timestamp
-			element.VideoStats.Timestamp = statsTimestampNow()
+
+			element.VideoStats.Timestamp = statsTimestampFrom(pkt.TimeStamp)
 
 			if preTime <= 0 {
 				log.Printf("preTime: %v, FramesDelayTotal: %d\n", preTime, element.VideoStats.FramesDelayTotal)

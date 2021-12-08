@@ -654,6 +654,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						IsKeyFrame:      false,
 						Duration:        time.Duration(float32(timestamp-client.PreVideoTS)/90) * time.Millisecond,
 						Time:            time.Duration(timestamp/90) * time.Millisecond,
+						TimeStamp:       time.Now(),
 					})
 				case h265parser.NAL_UNIT_VPS:
 					client.CodecUpdateVPS(nal)
@@ -681,6 +682,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 							IsKeyFrame:      naluType == h265parser.NAL_UNIT_CODED_SLICE_IDR_W_RADL,
 							Duration:        time.Duration(float32(timestamp-client.PreVideoTS)/90) * time.Millisecond,
 							Time:            time.Duration(timestamp/90) * time.Millisecond,
+							TimeStamp:       time.Now(),
 						})
 					} else {
 						client.BufferRtpPacket.Write(nal[3:])
@@ -701,6 +703,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						IsKeyFrame:      naluType == 5,
 						Duration:        time.Duration(float32(timestamp-client.PreVideoTS)/90) * time.Millisecond,
 						Time:            time.Duration(timestamp/90) * time.Millisecond,
+						TimeStamp:       time.Now(),
 					})
 				case naluType == 7:
 					client.CodecUpdateSPS(nal)
@@ -756,6 +759,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 								Idx:             client.videoIDX,
 								IsKeyFrame:      naluTypef == 5,
 								Time:            time.Duration(timestamp/90) * time.Millisecond,
+								TimeStamp:       time.Now(),
 							})
 						}
 					}
