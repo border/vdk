@@ -760,7 +760,8 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						}
 					}
 				default:
-					client.Println("Unsupported NAL Type", naluType)
+					// client.Println("Unsupported NAL Type", naluType)
+					log.Println("Unsupported NAL Type", naluType)
 				}
 			}
 		}

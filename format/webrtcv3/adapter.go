@@ -33,7 +33,10 @@ type Muxer struct {
 	Options    Options
 	videoTrack *webrtc.TrackLocalStaticSample
 	audioTrack *webrtc.TrackLocalStaticSample
+
+	VideoStats VideoReceiverStats
 }
+
 type Stream struct {
 	codec av.CodecData
 	track *webrtc.TrackLocalStaticSample
@@ -55,6 +58,7 @@ type Options struct {
 
 func NewMuxer(options Options) *Muxer {
 	tmp := Muxer{Options: options, ClientACK: time.NewTimer(time.Second * 20), StreamACK: time.NewTimer(time.Second * 20), streams: make(map[int8]*Stream)}
+	tmp.VideoStats.FramesDelayTotal = 0
 	//go tmp.WaitCloser()
 	return &tmp
 }
@@ -228,6 +232,25 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 				pkt.Data = append([]byte{0, 0, 0, 1}, bytes.Join([][]byte{codec.SPS(), codec.PPS(), pkt.Data[4:]}, []byte{0, 0, 0, 1})...)
 			} else {
 				pkt.Data = pkt.Data[4:]
+			}
+			preTime := element.VideoStats.Timestamp
+			element.VideoStats.Timestamp = statsTimestampNow()
+
+			if preTime <= 0 {
+				log.Printf("preTime: %v, FramesDelayTotal: %d\n", preTime, element.VideoStats.FramesDelayTotal)
+				preTime = element.VideoStats.Timestamp
+			}
+			delay := uint32(element.VideoStats.Timestamp - preTime)
+
+			element.VideoStats.FramesDelayTotal += delay
+			element.VideoStats.FramesDelay = delay
+			element.VideoStats.FramesReceived += 1
+			element.VideoStats.FramesDelayAvg = element.VideoStats.FramesDelayTotal / element.VideoStats.FramesReceived
+
+			if preTime.Time().Second() == time.Now().Second() {
+				element.VideoStats.FramesPerSecond += 1
+			} else {
+				element.VideoStats.FramesPerSecond = 0
 			}
 		case av.PCM_ALAW:
 		case av.OPUS:
