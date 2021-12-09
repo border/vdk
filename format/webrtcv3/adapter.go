@@ -235,7 +235,7 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 			}
 			preTime := element.VideoStats.Timestamp
 
-			element.VideoStats.Timestamp = statsTimestampFrom(pkt.TimeStamp)
+			element.VideoStats.Timestamp = statsTimestampNow()
 
 			if preTime <= 0 {
 				log.Printf("preTime: %v, FramesDelayTotal: %d\n", preTime, element.VideoStats.FramesDelayTotal)
@@ -246,6 +246,7 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 			element.VideoStats.FramesDelayTotal += delay
 			element.VideoStats.FramesDelay = delay
 			element.VideoStats.FramesReceived += 1
+			element.VideoStats.VideoDelay = uint32(element.VideoStats.Timestamp - statsTimestampFrom(pkt.TimeStamp))
 			element.VideoStats.FramesDelayAvg = element.VideoStats.FramesDelayTotal / element.VideoStats.FramesReceived
 
 			if preTime.Time().Second() == time.Now().Second() {

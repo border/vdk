@@ -23,6 +23,8 @@ type VideoReceiverStats struct {
 
 	FramesDelay uint32 `json:"framesDelay"`
 
+	VideoDelay uint32 `json:"videoDelay"`
+
 	FramesDelayTotal uint32 `json:"framesDelayTotal"`
 
 	FramesDelayAvg uint32 `json:"framesDelayAvg"`
