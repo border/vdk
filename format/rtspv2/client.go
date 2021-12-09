@@ -716,14 +716,14 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 					fuHeader := content[offset+1]
 					isStart := fuHeader&0x80 != 0
 					isEnd := fuHeader&0x40 != 0
-					// _naltype := fuHeader & 0x1F
+					_naltype := fuHeader & 0x1F
 					if isStart {
 						client.fuStarted = true
 						client.BufferRtpPacket.Truncate(0)
 						client.BufferRtpPacket.Reset()
 						client.BufferRtpPacket.Write([]byte{fuIndicator&0xe0 | fuHeader&0x1f})
 					}
-					// log.Printf("SequenceNumber: %d, isStart: %v, isEnd: %v, _naltype: %X, client.fuStarted: %v, BufferRtpPacketLen: %d\n", SequenceNumber, isStart, isEnd, _naltype, client.fuStarted, client.BufferRtpPacket.Len())
+					client.Printf("SequenceNumber: %d, isStart: %v, isEnd: %v, _naltype: %X, client.fuStarted: %v, BufferRtpPacketLen: %d\n", SequenceNumber, isStart, isEnd, _naltype, client.fuStarted, client.BufferRtpPacket.Len())
 					if client.fuStarted {
 						// 另外，有的hk摄像头回调然后解读出来的原始h.264码流，有的一包里只有分界符数据(nal_unit_type=9)或补充增强信息单元(nal_unit_type=6)，如果直接送入解码器，有可能会出现问题，这里的处理方式要么丢弃这两个部分，要么和之后的数据合起来，再送入解码器里)
 						client.BufferRtpPacket.Write(content[offset+2 : end])
@@ -764,8 +764,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						}
 					}
 				default:
-					// client.Println("Unsupported NAL Type", naluType)
-					log.Println("Unsupported NAL Type", naluType)
+					client.Println("Unsupported NAL Type", naluType)
 				}
 			}
 		}
@@ -973,6 +972,13 @@ func (client *RTSPClient) CodecUpdateVPS(val []byte) {
 func (client *RTSPClient) Println(v ...interface{}) {
 	if client.options.Debug {
 		log.Println(v)
+	}
+}
+
+//Println mini logging functions
+func (client *RTSPClient) Printf(format string, v ...interface{}) {
+	if client.options.Debug {
+		log.Printf(format, v...)
 	}
 }
 
