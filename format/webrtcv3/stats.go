@@ -11,12 +11,6 @@ type VideoReceiverStats struct {
 	// Timestamp is the timestamp associated with this object.
 	Timestamp StatsTimestamp `json:"timestamp"`
 
-	// FramesPerSecond represents the nominal FPS value before the degradation preference
-	// is applied. It is the number of complete frames in the last second. For sending
-	// tracks it is the current captured FPS and for the receiving tracks it is the
-	// current decoding framerate.
-	FramesPerSecond float64 `json:"framesPerSecond"`
-
 	// FramesReceived Represents the total number of complete frames received for
 	// this receiver. This metric is incremented when the complete frame is received.
 	FramesReceived uint32 `json:"framesReceived"`

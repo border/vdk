@@ -249,11 +249,6 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 			element.VideoStats.VideoDelay = uint32(element.VideoStats.Timestamp - statsTimestampFrom(pkt.TimeStamp))
 			element.VideoStats.FramesDelayAvg = element.VideoStats.FramesDelayTotal / element.VideoStats.FramesReceived
 
-			if preTime.Time().Second() == time.Now().Second() {
-				element.VideoStats.FramesPerSecond += 1
-			} else {
-				element.VideoStats.FramesPerSecond = 0
-			}
 		case av.PCM_ALAW:
 		case av.OPUS:
 		case av.PCM_MULAW:
