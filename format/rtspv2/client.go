@@ -990,9 +990,9 @@ func binSize(val int) []byte {
 }
 
 func getKeepalive(timeout int) int {
-	keepalive := int(float64(timeout) * 0.7)
+	keepalive := int(float64(timeout) * 0.8)
 	if keepalive == 0 {
-		keepalive = 1
+		keepalive = 3
 	}
 	return keepalive
 }
