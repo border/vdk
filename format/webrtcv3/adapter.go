@@ -249,6 +249,10 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 			element.VideoStats.VideoDelay = uint32(element.VideoStats.Timestamp - statsTimestampFrom(pkt.TimeStamp))
 			element.VideoStats.FramesDelayAvg = element.VideoStats.FramesDelayTotal / element.VideoStats.FramesReceived
 
+			// repost := element.pc.GetStats()
+			// rep, err := json.Marshal(&repost)
+			// log.Printf("pc GetStats: %s, err: %v\n", string(rep), err)
+
 		case av.PCM_ALAW:
 		case av.OPUS:
 		case av.PCM_MULAW:
@@ -261,7 +265,8 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 		default:
 			return ErrorCodecNotSupported
 		}
-		err = tmp.track.WriteSample(media.Sample{Data: pkt.Data, Duration: pkt.Duration})
+		// err = tmp.track.WriteSample(media.Sample{Data: pkt.Data, Duration: pkt.Duration})
+		err = tmp.track.WriteSample(media.Sample{Data: pkt.Data, Duration: time.Millisecond * 90})
 		if err == nil {
 			WritePacketSuccess = true
 		}
