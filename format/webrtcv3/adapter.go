@@ -265,8 +265,9 @@ func (element *Muxer) WritePacket(pkt av.Packet) (err error) {
 		default:
 			return ErrorCodecNotSupported
 		}
-		// err = tmp.track.WriteSample(media.Sample{Data: pkt.Data, Duration: pkt.Duration})
-		err = tmp.track.WriteSample(media.Sample{Data: pkt.Data, Duration: time.Millisecond * 90})
+		err = tmp.track.WriteSample(media.Sample{Data: pkt.Data, Duration: pkt.Duration})
+		// log.Printf("WriteSample pkt.Duration: %d, time.Millisecond * 90: %d\n", pkt.Duration, time.Millisecond*90)
+		// err = tmp.track.WriteSample(media.Sample{Data: pkt.Data, Duration: time.Millisecond * 90})
 		if err == nil {
 			WritePacketSuccess = true
 		}

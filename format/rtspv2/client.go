@@ -738,8 +738,8 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 									switch {
 									case naluTypefs == 5:
 										// type = 5 关键帧 I Frame: 0x65  header & 0x1F = 5
-										client.BufferRtpPacket.Reset()
-										client.BufferRtpPacket.Write(v)
+										// client.BufferRtpPacket.Reset()
+										// client.BufferRtpPacket.Write(v)
 										naluTypef = 5
 									case naluTypefs == 7:
 										// SPS: 0x67 header & 0x1F = 7 序列的参数集(SPS)：包括了一个图像序列的所有信息，
